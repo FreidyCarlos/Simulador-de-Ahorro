@@ -1,0 +1,42 @@
+# Dependencias y compilados
+node_modules/
+dist/
+server-dist/
+coverage/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Datos locales y respaldos
+data/
+backups/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Variables y registros locales
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editores, sistema y herramientas locales
+.vscode/
+.idea/
+.history/
+.DS_Store
+Thumbs.db
+desktop.ini
+.agents/
+.codex/
+.openai/
+
+# Archivos temporales
+tmp/
+temp/
+*.tmp
+*.swp
