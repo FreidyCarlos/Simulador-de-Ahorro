@@ -8,7 +8,7 @@ vite.config.js
 vite.config.d.ts
 
 # Datos locales y respaldos
-data/
+/data/
 backups/
 *.sqlite
 *.sqlite-shm
