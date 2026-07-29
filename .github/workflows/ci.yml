@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Ejecutar pruebas
-        run: npm test -- --pool=threads --no-file-parallelism
+        run: npm test -- --pool=forks --no-file-parallelism
 
       - name: Compilar frontend y backend
         run: npm run build
