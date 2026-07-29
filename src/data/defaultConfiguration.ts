@@ -90,7 +90,7 @@ export const defaultSettings: Settings = {
   scenarios: [
     {
       id: "scenario-50",
-      name: "Plan base",
+      name: "Ahorro base",
       savingsRate: 50,
       initialNuBalance: 0,
       initialExternalBalance: 0,

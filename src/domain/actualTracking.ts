@@ -504,10 +504,10 @@ export const variation = (ideal: number, actual: number | null) => {
     amount,
     percentage: amount === 0 ? 0 : D(actual).div(ideal).minus(1).toNumber(),
     label: amount === 0
-      ? "Según el plan"
+      ? "Según el ahorro ideal"
       : amount > 0
-        ? "Por encima del plan"
-        : "Por debajo del plan",
+        ? "Por encima del ahorro ideal"
+        : "Por debajo del ahorro ideal",
   };
 };
 
@@ -521,8 +521,8 @@ export const metricVariation = (
   const label =
     result.amount === 0
       ? cost
-        ? "Costo según el plan"
-        : "Según el plan"
+        ? "Costo según el ahorro ideal"
+        : "Según el ahorro ideal"
       : cost
         ? result.amount > 0
           ? "Costo superior al esperado"

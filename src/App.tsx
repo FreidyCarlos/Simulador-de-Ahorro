@@ -15,6 +15,8 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Database,
   Download,
@@ -82,9 +84,10 @@ import type {
 import { currency, downloadFile, monthLabel, numberValue } from "./utils/format";
 import { actualTrackingCsvRows, toCsv } from "./utils/csv";
 import {
-  filterAroundLatestReal,
-  shiftMonth,
-  type ChartTimeScope,
+  filterChartForView,
+  getChartMonthNeighbors,
+  moveActualChartWindow,
+  type ChartView,
 } from "./utils/chart";
 import {
   resolveTheme,
@@ -207,7 +210,7 @@ const ChartTooltip = ({
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ color: string; name: string; value: number }>;
+  payload?: Array<{ color: string; name: string; value: number | string }>;
   label?: string;
 }) => {
   if (!active || !payload?.length) return null;
@@ -217,7 +220,8 @@ const ChartTooltip = ({
       {payload.map((item) => (
         <div key={item.name}>
           <span style={{ background: item.color }} />
-          {item.name} <b>{currency(item.value)}</b>
+          {item.name}{" "}
+          <b>{typeof item.value === "number" ? currency(item.value) : item.value}</b>
         </div>
       ))}
     </div>
@@ -1659,22 +1663,81 @@ function Overview({
 }) {
   const summary = result.summaries[0];
   const lastRealMonth = actualSummary.lastConfirmedMonth;
+  const defaultActualChartEndMonth = lastRealMonth
+    ? nextMonth(lastRealMonth)
+    : settings.startDate;
   const [summaryView, setSummaryView] = useState<"ideal" | "actual">(
     actualSummary.registeredMonths ? "actual" : "ideal",
   );
-  const [chartTimeScope, setChartTimeScope] = useState<ChartTimeScope>(
-    lastRealMonth ? "context" : "full",
+  const [chartView, setChartView] = useState<ChartView>(
+    lastRealMonth ? "actual" : "ideal",
+  );
+  const [selectedChartMonth, setSelectedChartMonth] = useState(
+    lastRealMonth ?? settings.startDate,
+  );
+  const [actualChartEndMonth, setActualChartEndMonth] = useState(
+    defaultActualChartEndMonth,
   );
   const [showUpdatedProjection, setShowUpdatedProjection] = useState(false);
-  const hadRealMonth = useRef(Boolean(lastRealMonth));
-  useEffect(() => {
-    if (!hadRealMonth.current && lastRealMonth) {
-      setChartTimeScope("context");
-    } else if (!lastRealMonth) {
-      setChartTimeScope("full");
+  const [buttonChartTooltip, setButtonChartTooltip] = useState<
+    "hidden" | "visible" | "fading"
+  >("hidden");
+  const buttonTooltipFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const buttonTooltipHideTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const clearButtonTooltipTimers = useCallback(() => {
+    if (buttonTooltipFadeTimer.current) {
+      clearTimeout(buttonTooltipFadeTimer.current);
+      buttonTooltipFadeTimer.current = null;
     }
-    hadRealMonth.current = Boolean(lastRealMonth);
-  }, [lastRealMonth]);
+    if (buttonTooltipHideTimer.current) {
+      clearTimeout(buttonTooltipHideTimer.current);
+      buttonTooltipHideTimer.current = null;
+    }
+  }, []);
+  const hideButtonChartTooltip = useCallback(() => {
+    clearButtonTooltipTimers();
+    setButtonChartTooltip("hidden");
+  }, [clearButtonTooltipTimers]);
+  const showButtonChartTooltip = useCallback(() => {
+    clearButtonTooltipTimers();
+    setButtonChartTooltip("visible");
+    buttonTooltipFadeTimer.current = setTimeout(() => {
+      setButtonChartTooltip("fading");
+    }, 2200);
+    buttonTooltipHideTimer.current = setTimeout(() => {
+      setButtonChartTooltip("hidden");
+    }, 3000);
+  }, [clearButtonTooltipTimers]);
+  useEffect(
+    () => () => {
+      clearButtonTooltipTimers();
+    },
+    [clearButtonTooltipTimers],
+  );
+  const previousLastRealMonth = useRef(lastRealMonth);
+  useEffect(() => {
+    if (lastRealMonth && previousLastRealMonth.current !== lastRealMonth) {
+      setChartView("actual");
+      setSelectedChartMonth(lastRealMonth);
+      setActualChartEndMonth(defaultActualChartEndMonth);
+      hideButtonChartTooltip();
+    } else if (!lastRealMonth) {
+      setChartView("ideal");
+      setSelectedChartMonth(settings.startDate);
+      setActualChartEndMonth(settings.startDate);
+      hideButtonChartTooltip();
+    }
+    previousLastRealMonth.current = lastRealMonth;
+  }, [
+    defaultActualChartEndMonth,
+    hideButtonChartTooltip,
+    lastRealMonth,
+    settings.startDate,
+  ]);
   const projectionChartData = useMemo(
     () =>
       projection.map((row) => ({
@@ -1688,19 +1751,73 @@ function Overview({
   );
   const visibleChartData = useMemo(
     () =>
-      filterAroundLatestReal(
+      filterChartForView(
         projectionChartData,
-        lastRealMonth,
-        chartTimeScope,
+        actualChartEndMonth,
+        chartView,
       ),
-    [projectionChartData, lastRealMonth, chartTimeScope],
+    [projectionChartData, actualChartEndMonth, chartView],
   );
-  const contextStart = lastRealMonth
-    ? shiftMonth(lastRealMonth, -1)
-    : undefined;
-  const contextEnd = lastRealMonth
-    ? shiftMonth(lastRealMonth, 1)
-    : undefined;
+  const selectedChartRow = projectionChartData.find(
+    (row) => row.fullDate === selectedChartMonth,
+  );
+  const chartMonthNeighbors = getChartMonthNeighbors(
+    projectionChartData,
+    selectedChartMonth,
+  );
+  const selectChartMonth = (month: string) => {
+    setSelectedChartMonth(month);
+    if (chartView === "actual") {
+      setActualChartEndMonth((current) =>
+        moveActualChartWindow(projectionChartData, current, month),
+      );
+    }
+    showButtonChartTooltip();
+  };
+  const selectedVisibleIndex = visibleChartData.findIndex(
+    (row) => row.fullDate === selectedChartMonth,
+  );
+  const selectedPointPosition =
+    selectedVisibleIndex < 0
+      ? 50
+      : visibleChartData.length <= 1
+        ? 50
+        : (selectedVisibleIndex / (visibleChartData.length - 1)) * 100;
+  const selectedPointAlignment =
+    selectedVisibleIndex <= 0
+      ? "start"
+      : selectedVisibleIndex >= visibleChartData.length - 1
+        ? "end"
+        : "center";
+  const selectedChartTooltipPayload = selectedChartRow
+    ? [
+        {
+          color: "#8ea19a",
+          name: "Ahorro ideal",
+          value: selectedChartRow["Ahorro ideal"],
+        },
+        {
+          color: "#1f9d78",
+          name: "Ahorro real",
+          value:
+            selectedChartRow["Patrimonio real"] === null
+              ? "Sin datos"
+              : selectedChartRow["Patrimonio real"],
+        },
+        ...(showUpdatedProjection
+          ? [
+              {
+                color: "#7c5ce7",
+                name: "Actualizada",
+                value:
+                  selectedChartRow["Proyección actualizada"] === null
+                    ? "Sin datos"
+                    : selectedChartRow["Proyección actualizada"],
+              },
+            ]
+          : []),
+      ]
+    : [];
   const pending = summary?.pendingTransfer;
   const finalMonth = result.monthly.filter((row) => row.scenarioId === summary?.scenario.id).at(-1);
   const nextIdealTuition = result.monthly.find(
@@ -1753,7 +1870,7 @@ function Overview({
           <h1>Panorama</h1>
         </div>
         <button className="button button-primary" onClick={onEdit}>
-          <Settings2 size={17} /> Ajustar mi plan
+          <Settings2 size={17} /> Ajustar mi ahorro
         </button>
       </section>
 
@@ -1814,24 +1931,34 @@ function Overview({
               <div
                 className="chart-range-toggle"
                 role="group"
-                aria-label="Periodo mostrado en la gráfica"
+                aria-label="Vista mostrada en la gráfica"
               >
                 <button
                   type="button"
-                  className={chartTimeScope === "context" ? "active" : ""}
-                  onClick={() => setChartTimeScope("context")}
+                  className={chartView === "actual" ? "active" : ""}
+                  onClick={() => {
+                    setChartView("actual");
+                    setSelectedChartMonth(
+                      lastRealMonth ?? projectionChartData.at(0)?.fullDate ?? settings.startDate,
+                    );
+                    setActualChartEndMonth(
+                      lastRealMonth
+                        ? nextMonth(lastRealMonth)
+                        : projectionChartData.at(0)?.fullDate ?? settings.startDate,
+                    );
+                  }}
                   disabled={!lastRealMonth}
-                  aria-pressed={chartTimeScope === "context"}
+                  aria-pressed={chartView === "actual"}
                 >
-                  Alrededor del último real
+                  Ahorro real
                 </button>
                 <button
                   type="button"
-                  className={chartTimeScope === "full" ? "active" : ""}
-                  onClick={() => setChartTimeScope("full")}
-                  aria-pressed={chartTimeScope === "full"}
+                  className={chartView === "ideal" ? "active" : ""}
+                  onClick={() => setChartView("ideal")}
+                  aria-pressed={chartView === "ideal"}
                 >
-                  Plan completo
+                  Ahorro ideal
                 </button>
               </div>
               <button
@@ -1856,22 +1983,90 @@ function Overview({
               </div>
             </div>
           </div>
-          {chartTimeScope === "context" && contextStart && contextEnd && (
-            <p className="chart-range-caption">
-              Mostrando {monthLabel(contextStart, true)},{" "}
-              {monthLabel(lastRealMonth!, true)} y{" "}
-              {monthLabel(contextEnd, true)}.
-            </p>
-          )}
+          <div className="chart-month-navigation">
+            <button
+              type="button"
+              className="chart-month-step"
+              aria-label={
+                chartMonthNeighbors.previous
+                  ? `Ver ${monthLabel(chartMonthNeighbors.previous.fullDate, true)}`
+                  : "No hay un mes anterior"
+              }
+              disabled={!chartMonthNeighbors.previous}
+              onClick={() =>
+                chartMonthNeighbors.previous &&
+                selectChartMonth(chartMonthNeighbors.previous.fullDate)
+              }
+            >
+              <ChevronLeft size={15} />
+              <span>
+                <small>Ver</small>
+                <strong>
+                  {chartMonthNeighbors.previous
+                    ? monthLabel(chartMonthNeighbors.previous.fullDate, true)
+                    : "Inicio"}
+                </strong>
+              </span>
+            </button>
+            <div className="chart-current-month" aria-live="polite">
+              <small>Mes seleccionado</small>
+              <strong>
+                {selectedChartRow
+                  ? monthLabel(selectedChartRow.fullDate, true)
+                  : "Sin mes"}
+              </strong>
+            </div>
+            <button
+              type="button"
+              className="chart-month-step next"
+              aria-label={
+                chartMonthNeighbors.next
+                  ? `Ver ${monthLabel(chartMonthNeighbors.next.fullDate, true)}`
+                  : "No hay un mes siguiente"
+              }
+              disabled={!chartMonthNeighbors.next}
+              onClick={() =>
+                chartMonthNeighbors.next &&
+                selectChartMonth(chartMonthNeighbors.next.fullDate)
+              }
+            >
+              <span>
+                <small>Ver</small>
+                <strong>
+                  {chartMonthNeighbors.next
+                    ? monthLabel(chartMonthNeighbors.next.fullDate, true)
+                    : "Fin"}
+                </strong>
+              </span>
+              <ChevronRight size={15} />
+            </button>
+          </div>
           <div
             className="chart-wrap"
             role="img"
-            aria-label={`Evolución del patrimonio: ${
-              chartTimeScope === "context"
-                ? "mes anterior, último mes real y mes siguiente"
-                : "plan completo"
-            }; consulte Resultados para los valores exactos`}
+            onMouseEnter={hideButtonChartTooltip}
+            aria-label={`Evolución del patrimonio en la vista de ${
+              chartView === "actual" ? "Ahorro real" : "Ahorro ideal"
+            }, con ${
+              selectedChartRow
+                ? monthLabel(selectedChartRow.fullDate, true)
+                : "ningún mes"
+            } seleccionado; consulte Resultados para los valores exactos`}
           >
+            {buttonChartTooltip !== "hidden" &&
+              selectedChartRow &&
+              selectedVisibleIndex >= 0 && (
+                <div
+                  className={`chart-selected-tooltip ${selectedPointAlignment} ${buttonChartTooltip}`}
+                  style={{ left: `${selectedPointPosition}%` }}
+                >
+                  <ChartTooltip
+                    active
+                    label={selectedChartRow.date}
+                    payload={selectedChartTooltipPayload}
+                  />
+                </div>
+              )}
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={visibleChartData}
@@ -1881,13 +2076,20 @@ function Overview({
                 <XAxis dataKey="date" interval="preserveStartEnd" tickLine={false} axisLine={false} tick={{ fill: "var(--muted)", fontSize: 11 }} />
                 <YAxis padding={{ top: 10, bottom: 10 }} tickFormatter={(value) => currency(value, true)} tickLine={false} axisLine={false} tick={{ fill: "var(--muted)", fontSize: 11 }} width={72} />
                 <Tooltip content={<ChartTooltip />} />
+                {selectedChartRow && (
+                  <ReferenceLine
+                    x={selectedChartRow.date}
+                    stroke="var(--green)"
+                    strokeDasharray="2 4"
+                  />
+                )}
                 <Line
                   type="monotone"
                   dataKey="Ahorro ideal"
                   stroke="#8ea19a"
                   strokeDasharray="5 4"
                   strokeWidth={2}
-                  dot={chartTimeScope === "context" ? { r: 3 } : false}
+                  dot={chartView === "actual" ? { r: 3 } : false}
                 />
                 {showUpdatedProjection && (
                   <Line
@@ -1895,7 +2097,7 @@ function Overview({
                     dataKey="Proyección actualizada"
                     stroke="#7c5ce7"
                     strokeWidth={2.5}
-                    dot={chartTimeScope === "context" ? { r: 3 } : false}
+                    dot={chartView === "actual" ? { r: 3 } : false}
                   />
                 )}
                 <Line
@@ -1904,7 +2106,7 @@ function Overview({
                   stroke="#1f9d78"
                   strokeWidth={3}
                   connectNulls={false}
-                  dot={chartTimeScope === "context" ? { r: 4 } : false}
+                  dot={chartView === "actual" ? { r: 4 } : false}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -1978,7 +2180,7 @@ function Overview({
                 </div>
               </article>
               <article className="metric-card">
-                <div className="metric-top"><span className="icon-soft mint"><PiggyBank size={19} /></span><span className="trend positive">plan</span></div>
+                <div className="metric-top"><span className="icon-soft mint"><PiggyBank size={19} /></span><span className="trend positive">ahorro ideal</span></div>
                 <span>Aportes proyectados</span>
                 <strong>{currency(summary.totalContributions)}</strong>
                 <p>{summary.scenario.savingsRate}% de los ingresos y primas</p>
@@ -2053,7 +2255,7 @@ function Overview({
               </h3>
               <p>
                 {summaryView === "ideal"
-                  ? `${summary.semestersPaid} de ${enabledTuitionCount} matrículas tienen cobertura en el plan.`
+                  ? `${summary.semestersPaid} de ${enabledTuitionCount} matrículas tienen cobertura en el ahorro ideal.`
                   : `${actualTuitionPayments.length} de ${enabledTuitionCount} matrículas tienen un pago real confirmado.`}
               </p>
             </div>
@@ -2207,7 +2409,7 @@ function Overview({
               El fondo nunca se lleva a saldo negativo.
             </p>
           </div>
-          <button onClick={onEdit}>Ajustar plan</button>
+          <button onClick={onEdit}>Ajustar ahorro</button>
         </div>
       )}
 
@@ -2252,7 +2454,7 @@ function Plan({
       ...settings,
       scenarios: [...settings.scenarios, {
         id: `scenario-${Date.now()}`,
-        name: `Plan alternativo ${index}`,
+        name: `Ahorro alternativo ${index}`,
         savingsRate: 40,
         initialNuBalance: 0,
         initialExternalBalance: 0,
@@ -2455,7 +2657,7 @@ function Plan({
             <div>
               <span className="eyebrow">Comparación flexible</span>
               <h2>Escenarios de ahorro</h2>
-              <p>Activa varios planes para comparar cómo cambia la cobertura.</p>
+              <p>Activa varios escenarios de ahorro para comparar cómo cambia la cobertura.</p>
             </div>
             <button className="button button-primary" onClick={addScenario}><Plus size={16} /> Nuevo escenario</button>
           </div>

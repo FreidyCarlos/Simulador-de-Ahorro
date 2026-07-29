@@ -20,6 +20,12 @@ import {
 } from "lucide-react";
 import { createEmptyActualRecord } from "../data/defaultActualTracking";
 import {
+  actualContributionTotal,
+  changeActualBonusContribution,
+  changeActualContributionTotal,
+  foldActualBonusIntoRegular,
+} from "../domain/actualContribution";
+import {
   calculateActualDraftPreview,
   calculateActualTracking,
   monthlyNuYieldFromCumulative,
@@ -107,10 +113,20 @@ export function ActualTrackingView({
   const storedRecord = tracking.records.find(
     (record) => record.month === selectedMonth,
   );
+  const ideal = idealRows.find((row) => row.date === selectedMonth);
+  const configuredIncome = ideal?.monthlyIncome ?? 0;
+  const configuredBonus = ideal?.bonusIncome ?? 0;
   const [draft, setDraft] = useState<ActualMonthlyRecord>(
-    storedRecord
-      ? structuredClone(storedRecord)
-      : createEmptyActualRecord(selectedMonth),
+    {
+      ...(storedRecord
+        ? structuredClone(storedRecord)
+        : createEmptyActualRecord(selectedMonth)),
+      actualIncome: configuredIncome,
+      actualBonus: configuredBonus,
+    },
+  );
+  const [hasBonusContribution, setHasBonusContribution] = useState(
+    (storedRecord?.actualBonusContribution ?? 0) > 0,
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showGettingStarted, setShowGettingStarted] = useState(
@@ -121,14 +137,21 @@ export function ActualTrackingView({
     const found = tracking.records.find(
       (record) => record.month === selectedMonth,
     );
-    setDraft(
-      found
-        ? structuredClone(found)
-        : createEmptyActualRecord(selectedMonth),
-    );
-  }, [selectedMonth, tracking.records]);
-
-  const ideal = idealRows.find((row) => row.date === selectedMonth);
+    const nextDraft = found
+      ? structuredClone(found)
+      : createEmptyActualRecord(selectedMonth);
+    setDraft({
+      ...nextDraft,
+      actualIncome: configuredIncome,
+      actualBonus: configuredBonus,
+    });
+    setHasBonusContribution((found?.actualBonusContribution ?? 0) > 0);
+  }, [
+    selectedMonth,
+    tracking.records,
+    configuredIncome,
+    configuredBonus,
+  ]);
   const previousCumulativeNuYield = useMemo(
     () =>
       calculated
@@ -184,6 +207,50 @@ export function ActualTrackingView({
             ),
     }));
 
+  const updateContributionTotal = (value: number | undefined) =>
+    setDraft((current) => {
+      const breakdown = changeActualContributionTotal(
+        value ?? 0,
+        hasBonusContribution ? current.actualBonusContribution : 0,
+      );
+      return {
+        ...current,
+        actualRegularContribution: breakdown.regular,
+        actualBonusContribution: breakdown.bonus,
+      };
+    });
+
+  const updateBonusContribution = (value: number | undefined) =>
+    setDraft((current) => {
+      const breakdown = changeActualBonusContribution(
+        current.actualRegularContribution,
+        current.actualBonusContribution,
+        value ?? 0,
+      );
+      return {
+        ...current,
+        actualRegularContribution: breakdown.regular,
+        actualBonusContribution: breakdown.bonus,
+      };
+    });
+
+  const toggleBonusContribution = (enabled: boolean) => {
+    setHasBonusContribution(enabled);
+    if (!enabled) {
+      setDraft((current) => {
+        const breakdown = foldActualBonusIntoRegular(
+          current.actualRegularContribution,
+          current.actualBonusContribution,
+        );
+        return {
+          ...current,
+          actualRegularContribution: breakdown.regular,
+          actualBonusContribution: breakdown.bonus,
+        };
+      });
+    }
+  };
+
   const saveRecord = (status: "draft" | "confirmed") => {
     if (!preview) return;
     if (
@@ -207,6 +274,8 @@ export function ActualTrackingView({
     const now = new Date().toISOString();
     const nextRecord: ActualMonthlyRecord = {
       ...draft,
+      actualIncome: configuredIncome,
+      actualBonus: configuredBonus,
       actualNuGrossYield:
         derivedMonthlyNuYield === null
           ? draft.actualNuGrossYield
@@ -286,6 +355,7 @@ export function ActualTrackingView({
       tuitionFromNu: idealNuTuition,
       tuitionFromExternal: idealExternalTuition,
     }));
+    setHasBonusContribution(ideal.bonusSavings > 0);
     notify(
       "Valores ideales copiados al borrador. No serán reales hasta que guardes o confirmes.",
     );
@@ -384,8 +454,8 @@ export function ActualTrackingView({
           </div>
           <h1>Aporte mensual</h1>
           <p>
-            Registra únicamente lo que ocurrió. Ningún valor ideal se guarda
-            automáticamente como real.
+            Registra lo que ocurrió. El ingreso y la prima vienen de tu
+            configuración; los movimientos reales nunca se completan solos.
           </p>
         </div>
         <button className="button button-primary" onClick={newMonth}>
@@ -456,10 +526,10 @@ export function ActualTrackingView({
                 <div>
                   <strong>Escribe únicamente lo que ocurrió</strong>
                   <p>
-                    “Ingreso recibido” es lo que ganaste; “Aporte realizado” es
-                    solo lo que realmente enviaste al ahorro. El ingreso no
-                    aumenta el saldo por sí solo. Si pagaste matrícula, registra
-                    el valor y selecciona de dónde salió.
+                    El ingreso y la prima se toman automáticamente de tu
+                    configuración. En “Aporte realizado” escribe el total que
+                    realmente enviaste al ahorro. Si incluye dinero de la prima,
+                    activa el desglose para indicar qué parte corresponde a ella.
                   </p>
                 </div>
               </li>
@@ -665,30 +735,64 @@ export function ActualTrackingView({
           <div className="section-caption">
             <span>Datos principales</span>
             <small>
-              Los valores ideales son únicamente una referencia visual.
+              Ingreso y prima se toman automáticamente de la configuración.
             </small>
           </div>
+          <div
+            className="configured-income-summary"
+            aria-label="Ingresos configurados para el mes"
+          >
+            <article>
+              <span>Ingreso recibido</span>
+              <strong>{currency(configuredIncome)}</strong>
+              <small>Valor configurado para este año</small>
+            </article>
+            <article>
+              <span>Prima recibida</span>
+              <strong>{configuredBonus > 0 ? currency(configuredBonus) : "Sin prima"}</strong>
+              <small>Valor configurado para este mes</small>
+            </article>
+          </div>
           <div className="actual-form-grid actual-primary-fields">
-            <MoneyField
-              label="Ingreso recibido"
-              value={draft.actualIncome}
-              ideal={ideal?.monthlyIncome}
-              onChange={(value) => update("actualIncome", value ?? 0)}
-            />
-            <MoneyField
-              label="Prima recibida"
-              value={draft.actualBonus}
-              ideal={ideal?.bonusIncome}
-              onChange={(value) => update("actualBonus", value ?? 0)}
-            />
-            <MoneyField
-              label="Aporte realizado"
-              value={draft.actualRegularContribution}
-              ideal={ideal?.regularSavings}
-              onChange={(value) =>
-                update("actualRegularContribution", value ?? 0)
-              }
-            />
+            <div className="actual-contribution-entry">
+              <MoneyField
+                label="Aporte realizado"
+                value={actualContributionTotal(
+                  draft.actualRegularContribution,
+                  draft.actualBonusContribution,
+                )}
+                ideal={ideal?.totalContribution}
+                onChange={updateContributionTotal}
+              />
+              <label className="actual-bonus-check">
+                <input
+                  type="checkbox"
+                  checked={hasBonusContribution}
+                  onChange={(event) =>
+                    toggleBonusContribution(event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>¿Este aporte incluye prima?</strong>
+                  <small>
+                    Actívalo para separar la parte aportada desde la prima.
+                  </small>
+                </span>
+              </label>
+              {hasBonusContribution && (
+                <div className="actual-bonus-breakdown">
+                  <MoneyField
+                    label="Aporte de prima"
+                    value={draft.actualBonusContribution}
+                    ideal={ideal?.bonusSavings}
+                    onChange={updateBonusContribution}
+                  />
+                  <small>
+                    Ya está incluido en “Aporte realizado”; no se suma otra vez.
+                  </small>
+                </div>
+              )}
+            </div>
             <MoneyField
               label="Matrícula pagada"
               value={draft.actualTuitionPayment}
@@ -813,14 +917,6 @@ export function ActualTrackingView({
                 </p>
               </section>
               <div className="actual-form-grid">
-                <MoneyField
-                  label="Aporte desde prima"
-                  value={draft.actualBonusContribution}
-                  ideal={ideal?.bonusSavings}
-                  onChange={(value) =>
-                    update("actualBonusContribution", value ?? 0)
-                  }
-                />
                 <MoneyField
                   label="Retención real"
                   value={draft.actualWithholding}

@@ -208,6 +208,36 @@ mientras el puerto esté habilitado.
 Los motores siguen usando `Decimal.js`. Borradores, duplicados, registros
 inválidos y cierres con diferencias pendientes no afectan resultados definitivos.
 
+## Registro mensual del Ahorro real
+
+El ingreso recibido y la prima recibida se toman automáticamente de la
+configuración y se muestran como valores fijos del mes. El usuario registra el
+**aporte realizado**, que es el valor que afecta el seguimiento real.
+
+La prima no se suma automáticamente por segunda vez al aporte. La casilla de
+prima está desactivada de forma predeterminada y, al activarla, permite indicar
+el aporte correspondiente a la prima. De esta forma, el aporte total puede
+registrarse sin duplicar ingresos ni exigir la escritura repetida de valores
+configurados.
+
+## Gráfica de Panorama
+
+Cuando existen meses confirmados, Panorama abre de forma predeterminada en
+**Ahorro real**:
+
+- Muestra siempre una ventana de cuatro meses.
+- Mantiene seleccionado el último mes con datos reales.
+- Deja como cuarto mes, al extremo derecho, el primer mes posterior sin datos.
+- Los botones avanzan o retroceden exactamente un mes.
+- La ventana solo se desplaza cuando el mes seleccionado supera uno de sus
+  extremos; seleccionar un mes que ya está visible no deforma ni recorta la
+  gráfica.
+
+El detalle de cada punto utiliza un único tooltip visual. Al navegar con los
+botones aparece temporalmente junto al punto seleccionado y se desvanece de
+forma gradual. Al entrar con el cursor en la gráfica, ese detalle cede
+inmediatamente el control al tooltip normal del punto, evitando duplicados.
+
 ## Estructura principal
 
 ```text
@@ -220,11 +250,13 @@ src/services/stateApi.ts       Comunicación centralizada del frontend
 src/services/migration.ts      Migración única desde localStorage
 src/services/syncPolicy.ts     Debounce y decisiones de revisión
 src/App.tsx                    Carga, guardado, sincronización e interfaz
+src/domain/actualContribution.ts Reglas del aporte mensual y la prima
 src/domain/                    Motores y tipos financieros
+src/utils/chart.ts             Ventana y navegación mensual de Panorama
 src/utils/storage.ts           Esquema JSON y validador compartido
 ```
 
-## Validación del 28 de julio de 2026
+## Validación del 29 de julio de 2026
 
 Comandos ejecutados realmente:
 
@@ -239,14 +271,18 @@ npm run dev
 
 Resultados:
 
-- 139 pruebas superadas en 9 archivos: las 88 originales y 51 nuevas.
+- 149 pruebas superadas en 10 archivos.
 - Persistencia, reinicio, dos clientes, conflicto 409, respaldos, migración,
   proxy y equivalencia financiera verificados con SQLite temporal o ejecución
   local reproducible.
+- Registro mensual con ingreso y prima configurados, aporte de prima opcional y
+  prevención de doble conteo verificados.
+- Ventana de cuatro meses, desplazamiento por los extremos y tooltip único de
+  Panorama verificados mediante pruebas y navegador conectado.
 - Frontend servido por Vite y `/api/health` accesible mediante el proxy.
 - Estado conservado después de reiniciar el backend compilado.
-- Frontend: 2.211 módulos; JS 748,83 kB (211,43 kB gzip); CSS 63,75 kB
-  (13,71 kB gzip).
+- Frontend: 2.212 módulos; JS 753,64 kB (212,65 kB gzip); CSS 66,45 kB
+  (14,20 kB gzip).
 - Backend compilado: 49,7 kB.
 - `npm audit`: 0 vulnerabilidades.
 - `npm audit --omit=dev`: 0 vulnerabilidades.

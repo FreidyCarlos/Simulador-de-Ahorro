@@ -378,11 +378,11 @@ describe("seguimiento real", () => {
     expect(variation(1_000_000, 999_999.999999)).toEqual({
       amount: 0,
       percentage: 0,
-      label: "Según el plan",
+      label: "Según el ahorro ideal",
     });
     expect(variation(1_000_000, 999_999)).toMatchObject({
       amount: -1,
-      label: "Por debajo del plan",
+      label: "Por debajo del ahorro ideal",
     });
   });
 

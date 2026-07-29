@@ -136,8 +136,8 @@ export function PlanActualComparisonView({
             {last?.totalVariation == null
               ? "Registra un mes para comparar"
               : last.totalVariation >= 0
-                ? "Por encima del plan"
-                : "Por debajo del plan"}
+                ? "Por encima del ahorro ideal"
+                : "Por debajo del ahorro ideal"}
           </small>
         </article>
       </section>
