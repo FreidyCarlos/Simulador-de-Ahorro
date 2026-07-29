@@ -12,6 +12,8 @@ ni validaciones financieras.
 La aplicación no se conecta con bancos, no mueve dinero y sus proyecciones no
 constituyen una garantía financiera.
 
+<center><img width="1383" height="987" alt="image" src="https://github.com/user-attachments/assets/63a35542-a8e4-40c6-9fa8-95251bdaadd4" /><center/>
+
 ## Arquitectura
 
 ```text
