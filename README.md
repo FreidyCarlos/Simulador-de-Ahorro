@@ -38,7 +38,7 @@ SQLite es la fuente única de verdad financiera. La base se crea en
 
 ## Instalación y ejecución
 
-Requiere Node.js 20 o superior.
+Requiere Node.js 22 o superior.
 
 ```bash
 npm install

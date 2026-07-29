@@ -5,7 +5,7 @@
   "description": "Aplicación local para planear y registrar ahorro universitario compartido mediante SQLite.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "concurrently -k --names server,web \"npm run dev:server\" \"npm run dev:web\"",
@@ -41,8 +41,5 @@
     "typescript": "~5.7.2",
     "vite": "^6.0.5",
     "vitest": "^3.2.7"
-  },
-  "overrides": {
-    "tinypool": "1.0.2"
   }
 }
